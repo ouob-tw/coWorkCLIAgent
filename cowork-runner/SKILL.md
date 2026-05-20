@@ -1,7 +1,7 @@
 ---
 name: cowork-runner
-description: Use when executing CoWork queued implementation tasks from .cowork/tasks.yaml with Codex CLI, updating results.yaml, creating follow-up tasks, or running inside a zmx session started by cowork-dispatch.
-compatibility: Designed for Codex CLI. Requires shell access and a project workspace containing .cowork/.
+description: "Use when executing CoWork queued implementation tasks from .cowork/tasks.yaml with Codex CLI, updating results.yaml, creating follow-up tasks, or running inside a zmx session started by cowork-dispatch."
+compatibility: "Designed for Codex CLI. Requires shell access and a project workspace containing .cowork/."
 ---
 
 # CoWork Runner

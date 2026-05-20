@@ -1,7 +1,7 @@
 ---
 name: cowork-dispatch
-description: Use when coordinating CoWork collaboration from Claude Code: creating or reviewing specs and implementation plans, initializing .cowork queues, dispatching approved execution tasks through zmx, checking cowork status, or cleaning results.
-compatibility: Designed for Claude Code. Requires git, zmx, codex, codex-multi-auth, and a project workspace with shell access.
+description: "Use when coordinating CoWork collaboration from Claude Code: creating or reviewing specs and implementation plans, initializing .cowork queues, dispatching approved execution tasks through zmx, checking cowork status, or cleaning results."
+compatibility: "Designed for Claude Code. Requires git, zmx, codex, codex-multi-auth, and a project workspace with shell access."
 ---
 
 # CoWork Dispatch
