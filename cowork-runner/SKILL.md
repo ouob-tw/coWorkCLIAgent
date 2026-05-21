@@ -28,10 +28,11 @@ Use this skill when:
 
 ## Task Execution Strategy
 
-- Simple tasks: if the goal is clear, scoped to one file or a small localized change, Codex executes directly.
-- Complex tasks: if the goal spans multiple files, has many constraints, or requires multiple coordinated steps, Codex may generate sub-agent work divisions when available.
-- Complexity signals include `goal`, `context.related_files`, and the number or strictness of `constraints`.
-- Sub-agent work must stay within the queued task's goal and constraints.
+- Tasks typically point to a plan file via `context.plan_file`. **Always read the plan file first** and execute all phases in the order defined by the plan.
+- Each phase should leave the project in a runnable state before moving to the next.
+- Simple tasks (no plan file, clear goal): execute directly.
+- Complex tasks with a plan file: follow the plan's phases sequentially. Do not skip phases or reorder them.
+- Sub-agent work divisions are allowed when available and must stay within the queued task's goal and constraints.
 
 ## Processing Flow
 

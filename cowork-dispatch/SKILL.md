@@ -65,44 +65,54 @@ Use this skill when the user asks for any of the following:
 ### dispatch
 
 1. Confirm the implementation plan is approved.
-2. Convert approved execution work into one or more tasks.
+2. Create **one summary task** that points to the plan file. Do not split the plan into multiple granular tasks — Codex reads the plan itself and executes phases in order.
 3. Read `.cowork/tasks.yaml` using the queue rules below.
-4. Append new execution tasks with stable field order:
+4. Append the task with stable field order:
    `id`, `goal`, `context`, `constraints`, `created_by`, `created_at`.
+   - `goal`: a single sentence describing the full feature implementation.
+   - `context.plan_file`: path to the approved plan.
+   - `context.spec_file`: path to the approved spec (if any).
+   - `context.related_files`: key files Codex should be aware of.
+   - `constraints`: preserve user instructions and implementation constraints from the plan.
 5. Use a zmx session name in the form `cx-<short-english-task-name>`, such as `cx-user-api` or `cx-auth-module`.
 6. Run `zmx list` before starting. If the target session already exists, stop and report the conflict; do not overwrite it.
-7. Start Codex CLI with:
+7. Start Codex CLI in **detached mode** with `zmx run -d` and `bash -c` to avoid quoting issues:
 
    ```bash
-   zmx run cx-<name> "cd \"$PROJECT_DIR\" && codex --approval-mode full-auto 'You are the cowork-runner. Read .cowork/tasks.yaml, execute all pending implementation tasks following the cowork-runner skill, write .cowork/results.yaml, remove completed tasks, then exit.'"
+   zmx run cx-<name> -d bash -c 'codex exec --dangerously-bypass-approvals-and-sandbox "You are the cowork-runner. Read .cowork/tasks.yaml, execute all pending implementation tasks following the cowork-runner skill, write .cowork/results.yaml, remove completed tasks, then exit."'
    ```
 
-8. Wait 3 minutes.
-9. Run:
+   **Important zmx notes:**
+   - Always use `zmx run -d` (detached). Without `-d`, zmx blocks the calling terminal and the session is killed if the caller (e.g. Claude Code) exits.
+   - Always wrap the codex command with `bash -c '...'`. zmx passes arguments as-is; without `bash -c`, a command string with flags is treated as a single executable name.
+   - Use `codex exec --dangerously-bypass-approvals-and-sandbox` (not the deprecated `--approval-mode full-auto`).
+
+8. Wait 3 minutes, then check progress:
 
    ```bash
    zmx history cx-<name> | tail -20
    ```
 
-10. If history shows a 503-style error, run:
+9. If history shows a 503-style error, run:
 
-    ```bash
-    zmx send cx-<name> "GO"
-    ```
+   ```bash
+   zmx send cx-<name> "GO"
+   ```
 
-    Report: `Encountered 503; retried.`
+   Report: `Encountered 503; retried.`
 
-11. If history shows account quota exhaustion:
+10. If history shows account quota exhaustion:
     1. Run `codex-multi-auth check`.
     2. Find an account with available quota.
     3. Run `codex-multi-auth switch <account-number>`.
     4. Run `zmx send cx-<name> "GO"`.
     5. Report: `Switched account and retried.`
 
-12. If no account has quota, report that manual action is required. Do not delete dispatched tasks from `.cowork/tasks.yaml`.
-13. Tell the user:
+11. If no account has quota, report that manual action is required. Do not delete dispatched tasks from `.cowork/tasks.yaml`.
+12. Tell the user:
     - `zmx attach cx-<name>` shows live progress.
-    - `zmx history cx-<name>` shows output history.
+    - `zmx history cx-<name> | tail -30` shows recent output.
+    - `zmx wait cx-<name>` blocks until the session task completes.
     - `zmx list` shows all sessions.
     - `Ctrl+\` detaches from an attached session without terminating Codex.
 
@@ -124,16 +134,19 @@ Use this skill when the user asks for any of the following:
 
 ## Task Generation Rules
 
+- **One task per dispatch.** Create a single summary task that covers the entire approved plan. Codex reads the plan file and executes phases autonomously. Do not decompose the plan into per-phase or per-file tasks.
 - Task IDs use `task-{unix_ms}-{random_hex_3}`, for example `task-1747536000000-a3f`.
 - Each task contains only:
   - `id`
-  - `goal`
+  - `goal` — one sentence describing the full implementation scope
   - `context`
-  - `constraints`
+    - `plan_file` — path to the approved plan (Codex reads this to determine phases and steps)
+    - `spec_file` — path to the approved spec (optional)
+    - `related_files` — key files Codex should be aware of
+  - `constraints` — preserve implementation constraints from the approved plan and user instructions
   - `created_by: claude-code`
   - `created_at`
-- `context.plan_file` and `context.related_files` use project-root-relative paths.
-- `constraints` must preserve implementation constraints from the approved plan and user instructions.
+- All paths use project-root-relative format.
 - Do not include spec review, plan review, or planning-only work.
 
 ## Queue File Rules
