@@ -79,13 +79,13 @@ Use this skill when the user asks for any of the following:
 7. Start Codex CLI in **detached mode** with `zmx run -d` and `bash -c` to avoid quoting issues:
 
    ```bash
-   zmx run cx-<name> -d bash -c 'codex exec --dangerously-bypass-approvals-and-sandbox "You are the cowork-runner. Read .cowork/tasks.yaml, execute all pending implementation tasks following the cowork-runner skill, write .cowork/results.yaml, remove completed tasks, then exit."'
+   zmx run cx-<name> -d bash -c 'codex --dangerously-bypass-approvals-and-sandbox "You are the cowork-runner. Read .cowork/tasks.yaml, execute all pending implementation tasks following the cowork-runner skill, write .cowork/results.yaml, remove completed tasks, then exit."'
    ```
 
    **Important zmx notes:**
    - Always use `zmx run -d` (detached). Without `-d`, zmx blocks the calling terminal and the session is killed if the caller (e.g. Claude Code) exits.
    - Always wrap the codex command with `bash -c '...'`. zmx passes arguments as-is; without `bash -c`, a command string with flags is treated as a single executable name.
-   - Use `codex exec --dangerously-bypass-approvals-and-sandbox` (not the deprecated `--approval-mode full-auto`).
+   - Use `codex --dangerously-bypass-approvals-and-sandbox` (not `codex exec`; the full client handles zmx sessions correctly).
 
 8. Wait 3 minutes, then check progress:
 
