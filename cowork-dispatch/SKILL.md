@@ -38,6 +38,10 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
 
 **Continue by default.** Do not ask for confirmation between phases. After each phase completes, immediately proceed to the next. Report progress in one sentence per phase transition (e.g., "Spec approved, proceeding to plan.").
 
+**Do not infer completion.** A phase is complete only when its required review, approval, dispatch, monitor, or verification step has actually run and produced the expected result. Do not treat file existence, prior conversation context, or assistant confidence as proof that spec, plan, dispatch, monitor, or verification is complete.
+
+**Do not skip steps by default.** Run every phase and required substep unless the user explicitly asks to skip that specific step. If the user requests a skip, state which step is being skipped and continue with the remaining required workflow.
+
 **Pause only when:**
 
 - A design choice or ambiguity requires user decision (e.g., approach A vs B during brainstorm).
@@ -91,7 +95,7 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
 
 ### dispatch
 
-1. Confirm the implementation plan is approved.
+1. Confirm the implementation plan is approved by an actual completed review loop. Do not dispatch from a plan that merely exists or appears complete.
 2. Create **one summary task** that points to the plan file. Do not split the plan into multiple granular tasks — Codex reads the plan itself and executes phases in order.
 3. Read `.cowork/tasks.yaml` using the queue rules below.
 4. Append the task with stable field order:
