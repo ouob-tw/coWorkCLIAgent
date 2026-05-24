@@ -21,7 +21,7 @@
 7. 不使用 YAML 佇列做 spec/plan 審核；YAML 佇列只用於外部 Codex CLI 執行任務。
 8. 外部 Codex CLI 必須透過 `zmx` 持久化 session 啟動，session 名稱格式為 `cx-<簡短英文任務名>`。
 9. `cowork-dispatch` 啟動外部 session 前必須使用 `zmx list` 檢查同名 session。
-10. `cowork-dispatch` 啟動外部 session 後必須等待 3 分鐘並檢查 `zmx history`，處理 503 重送與帳號額度不足切換。
+10. `cowork-dispatch` 啟動外部 session 後必須用固定 `sleep 180` 等待，再檢查 `zmx history`，處理 503 重送與帳號額度不足切換；不得解析 `zmx list created=`、`date +%s`、`created_at` 或 `completed_at` 來計算等待時間。
 11. `.cowork/tasks.yaml` 的 task 欄位只包含 `task_id`、`goal`、`context`、`constraints`、`created_by`、`created_at`。
 12. `.cowork/results.yaml` 的 result 欄位包含 `task_id`、`goal`、`status`、`summary`、`outputs`、`errors`、`completed_at`。
 
@@ -77,7 +77,7 @@ compatibility: Designed for Claude Code. Requires git, zmx, codex, codex-multi-a
    - `init`：建立 `.cowork/`、`.cowork/tasks.yaml`、`.cowork/results.yaml`，空檔案內容使用 `[]`。
    - `spec`：先載入 Superpowers brainstorming 與 writing-plans 相關流程；Claude Code 撰寫 spec 初稿；呼叫 Codex plugin 審核；小問題可由 Codex plugin 直接修；大問題由 Claude Code 修後重新審核。
    - `plan`：spec 通過後，呼叫 Codex plugin 產出 implementation plan；Claude Code 比對 spec 審核 plan；有問題則回饋 Codex 修正；通過後與 spec 一起提交 commit。
-   - `dispatch`：從已核准 plan 產出執行任務；寫入 `.cowork/tasks.yaml`；使用 `zmx list` 檢查同名 session；使用 `zmx run` 啟動外部 Codex CLI；等待 3 分鐘後做健康檢查。
+   - `dispatch`：從已核准 plan 產出執行任務；寫入 `.cowork/tasks.yaml`；使用 `zmx list` 檢查同名 session；使用 `zmx run` 啟動外部 Codex CLI；固定 `sleep 180` 後做健康檢查。
    - `status`：讀取 `.cowork/tasks.yaml` 與 `.cowork/results.yaml`；顯示待處理、已完成、失敗、部分完成摘要；附上 `zmx list` 中 `cx-` session 狀態。
    - `clean`：將 `.cowork/results.yaml` 重設為 `[]`。
 
@@ -98,7 +98,8 @@ compatibility: Designed for Claude Code. Requires git, zmx, codex, codex-multi-a
 zmx run cx-<name> "cd \"$PROJECT_DIR\" && codex --approval-mode full-auto 'You are the cowork-runner. Read .cowork/tasks.yaml, execute all pending implementation tasks following the cowork-runner skill, write .cowork/results.yaml, remove completed tasks, then exit.'"
 ```
 
-   - 啟動後等待 3 分鐘，再執行 `zmx history cx-<name> | tail -20` 做健康檢查。
+   - 啟動後執行固定 `sleep 180`，再執行 `zmx history cx-<name> | tail -20` 做健康檢查。
+   - 不得用 `zmx list | grep ... created=...`、`date +%s`、`created_at` 或 `completed_at` 計算等待時間；`created_at` / `completed_at` 只是 YAML metadata。
    - 若 history 顯示 503 類型錯誤，執行 `zmx send cx-<name> "GO"`，並回報「遇到 503，已重試」。
    - 若 history 顯示帳號額度不足，執行 `codex-multi-auth check`，找出有額度帳號後執行 `codex-multi-auth switch <帳號編號>`，再執行 `zmx send cx-<name> "GO"`，並回報「已切換帳號並重試」。
    - 若無法找到有額度帳號，回報使用者需要手動處理，不得刪除 `.cowork/tasks.yaml` 中已派發任務。
@@ -123,7 +124,7 @@ zmx run cx-<name> "cd \"$PROJECT_DIR\" && codex --approval-mode full-auto 'You a
 - [ ] 寫入 `init`、`spec`、`plan`、`dispatch`、`status`、`clean` 六個工作流，每個工作流都用有序步驟描述。
 - [ ] 寫入任務 `task_id` 與 task 欄位產生規則。
 - [ ] 寫入 `.cowork/tasks.yaml` 讀取、空狀態與壞檔備份規則。
-- [ ] 寫入 `dispatch` 的 `zmx list` 重名檢查、`zmx run` 啟動、3 分鐘後 `zmx history` 健康檢查。
+- [ ] 寫入 `dispatch` 的 `zmx list` 重名檢查、`zmx run` 啟動、固定 `sleep 180` 後 `zmx history` 健康檢查。
 - [ ] 寫入 503 錯誤時使用 `zmx send cx-<name> "GO"` 重送。
 - [ ] 寫入帳號額度不足時使用 `codex-multi-auth check` 與 `codex-multi-auth switch <帳號編號>` 後重送。
 - [ ] 寫入 `zmx attach`、`zmx history`、`zmx list` 與 `Ctrl+\` detach 的使用者提示。
@@ -138,7 +139,7 @@ zmx run cx-<name> "cd \"$PROJECT_DIR\" && codex --approval-mode full-auto 'You a
 - 本文明確寫出 `tasks.yaml` 僅限執行任務，不用於 spec/plan 審核。
 - 本文明確寫出 `zmx` session 命名規則 `cx-<簡短英文任務名>`。
 - 本文明確寫出啟動前需用 `zmx list` 檢查同名 session。
-- 本文明確寫出使用 `zmx run` 啟動 `codex --approval-mode full-auto`，並在啟動後等待 3 分鐘檢查 `zmx history`。
+- 本文明確寫出使用 `zmx run` 啟動 `codex --approval-mode full-auto`，並在啟動後固定 `sleep 180` 檢查 `zmx history`。
 - 本文明確寫出 503 錯誤時使用 `zmx send cx-<name> "GO"` 重試。
 - 本文明確寫出帳號額度不足時使用 `codex-multi-auth check` 與 `codex-multi-auth switch <帳號編號>` 後重試。
 - 本文明確寫出使用者可用 `zmx attach`、`zmx history`、`zmx list` 檢查外部 session。
@@ -402,7 +403,7 @@ rg "tasks.yaml|results.yaml|--approval-mode full-auto|zmx list|zmx run|zmx histo
 - [x] 計畫涵蓋 `cowork-runner/SKILL.md`。
 - [x] 計畫涵蓋 `cowork-runner/references/yaml-schema.md`。
 - [x] 每個任務都有檔案路徑、內容說明與驗收標準。
-- [x] `cowork-dispatch/SKILL.md` 設計包含 `zmx list` 重名檢查、`zmx run` session 啟動、3 分鐘 `zmx history` 健康檢查、503 時 `zmx send` 重送與 `codex-multi-auth` 額度切換。
+- [x] `cowork-dispatch/SKILL.md` 設計包含 `zmx list` 重名檢查、`zmx run` session 啟動、固定 `sleep 180` 後 `zmx history` 健康檢查、503 時 `zmx send` 重送與 `codex-multi-auth` 額度切換。
 - [x] `cowork-runner/SKILL.md` 設計包含從 `tasks.yaml` 讀取任務、執行、寫入 `results.yaml`、移除已處理任務與正常退出。
 - [x] `cowork-runner/SKILL.md` 設計包含任務執行策略：簡單任務直接執行、複雜任務生成 sub-agent 分工執行。
 - [x] `yaml-schema.md` 的 `tasks.yaml` 欄位只包含 zmx 架構需要的任務資料。

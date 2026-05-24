@@ -114,7 +114,16 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
    - Always wrap the codex command with `bash -c '...'`. zmx passes arguments as-is; without `bash -c`, a command string with flags is treated as a single executable name.
    - Use `codex --dangerously-bypass-approvals-and-sandbox` (not `codex exec`; the full client handles zmx sessions correctly).
 
-8. **Initial error check** — wait 3 minutes, then run `zmx history cx-<name> | tail -20` once to detect startup failures (503, quota).
+8. **Initial error check** — after starting the zmx session, wait with a fixed sleep, then inspect recent history once:
+
+   ```bash
+   sleep 180
+   zmx history cx-<name> | tail -20
+   ```
+
+   Rules:
+   - Do not calculate elapsed time from `zmx list`, `created=...`, `date +%s`, or any other zmx timestamp output.
+   - Do not parse `created_at` or `completed_at` for waiting or completion checks; those fields are YAML metadata only.
 
 9. If history shows a 503-style error, run:
 
@@ -157,7 +166,7 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
     - Do not treat `tasks.yaml` → `[]`, `.cowork/results.yaml` existence, or zmx history output as completion; those are auxiliary signals only.
     - Use `sleep 30`, not `sleep 10`.
     - Run this as a single background monitor. Do not manually call `zmx history` in a loop.
-    - At most one additional mid-progress check at 3 minutes. No consecutive checks.
+    - At most one additional mid-progress check after another fixed `sleep 180`. No consecutive checks.
     - Only read `zmx history` once after the monitor signals completion.
 
 13. Tell the user:

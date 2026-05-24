@@ -127,7 +127,7 @@ cowork-dispatch skill 提供兩個獨立功能：
       ├─ 3. zmx run cx-<name> "cd $PROJECT_DIR && codex --approval-mode full-auto '...'"
       │
       ▼
-  等待 3 分鐘
+  固定 sleep 180
       │
       ▼
   健康檢查：zmx history cx-<name> | tail -20
@@ -267,7 +267,7 @@ YAML 列表。最新結果插入頂部。
 
 | 指令 | 動作 |
 |------|------|
-| dispatch | 從核准的 plan 產出執行任務寫入 tasks.yaml → 透過 zmx 啟動 Codex CLI session → 3 分鐘後健康檢查 |
+| dispatch | 從核准的 plan 產出執行任務寫入 tasks.yaml → 透過 zmx 啟動 Codex CLI session → 固定 `sleep 180` 後健康檢查 |
 | status | 顯示 tasks.yaml + results.yaml 摘要，以及 `zmx list` session 狀態 |
 | clean | 清空 results.yaml |
 
@@ -296,5 +296,5 @@ YAML 列表。最新結果插入頂部。
 6. **完成即移除任務** — Codex 完成任務後從 tasks.yaml 移除，不論成功或失敗
 7. **不自動重試** — 失敗任務由使用者決定是否重新派發
 8. **zmx session 命名** — `cx-<簡短英文任務名>`，dispatch 前先 `zmx list` 檢查不重複
-9. **健康檢查一次** — dispatch 後等 3 分鐘，`zmx history cx-<name> | tail -20` 檢查一次，503 則 `zmx send cx-<name> "GO"`，額度不足則 `codex-multi-auth check` 後 `codex-multi-auth switch`
+9. **健康檢查一次** — dispatch 後執行固定 `sleep 180`，再用 `zmx history cx-<name> | tail -20` 檢查一次；不得解析 `zmx list created=`、`date +%s`、`created_at` 或 `completed_at` 來計算等待時間。503 則 `zmx send cx-<name> "GO"`，額度不足則 `codex-multi-auth check` 後 `codex-multi-auth switch`
 10. **Conventional Commits** — spec + plan 完成後一起提交：`docs: add <feature-name> spec and implementation plan`
