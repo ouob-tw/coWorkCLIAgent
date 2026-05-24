@@ -49,7 +49,7 @@ Use this skill when:
    - `context.plan_file`
    - `context.related_files`
    - `constraints`
-6. For every processed task, insert a result at the top of `.cowork/results.yaml`.
+6. For every processed task, insert a result at the top of `.cowork/results.yaml` using the same `task_id` value from the task.
 7. Remove the processed task from `.cowork/tasks.yaml` whether it completed, partially completed, or failed.
 8. Preserve any unprocessed tasks.
 9. Before exiting, print a terminal summary with:
@@ -82,7 +82,7 @@ Use exactly one of these statuses:
 ## Follow-Up Tasks
 
 - Add follow-up tasks only when a large task must be split and the remaining work is still trackable.
-- Follow-up task IDs use `task-{unix_ms}-{random_hex_3}`.
+- Follow-up task `task_id` values use `task-{unix_ms}-{random_hex_3}`.
 - Follow-up tasks use `created_by: codex`.
 - Follow-up tasks must remain implementation tasks; never add spec review or plan review tasks.
 

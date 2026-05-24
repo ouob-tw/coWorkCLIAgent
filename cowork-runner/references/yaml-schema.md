@@ -7,7 +7,7 @@ This file is the complete reference for `.cowork/tasks.yaml`, `.cowork/results.y
 `tasks.yaml` is a YAML list of approved implementation tasks. The runner processes tasks from top to bottom.
 
 ```yaml
-- id: "task-1747536000000-a3f"
+- task_id: "task-1747536000000-a3f"
   goal: "Implement the User model in src/models/user.py with SQLAlchemy"
   context:
     plan_file: "docs/plans/2026-05-18-user-api-plan.md"
@@ -25,7 +25,7 @@ This file is the complete reference for `.cowork/tasks.yaml`, `.cowork/results.y
 
 | Field | Required | Type | Meaning |
 |---|---:|---|---|
-| `id` | yes | string | Unique ID in `task-{unix_ms}-{random_hex_3}` format. |
+| `task_id` | yes | string | Unique `task_id` value in `task-{unix_ms}-{random_hex_3}` format. |
 | `goal` | yes | string | Implementation goal. |
 | `context` | no | object | Supporting context for execution. |
 | `context.plan_file` | no | string | Project-root-relative path to the approved plan. |
@@ -53,7 +53,7 @@ This file is the complete reference for `.cowork/tasks.yaml`, `.cowork/results.y
 
 | Field | Required | Type | Meaning |
 |---|---:|---|---|
-| `task_id` | yes | string | Original task ID. |
+| `task_id` | yes | string | Same `task_id` value from the processed task. |
 | `goal` | yes | string | Original task goal copied into the result. |
 | `status` | yes | string | `completed`, `failed`, or `partial`. |
 | `summary` | yes | string | What happened. For `partial`, include completed and incomplete scope. |
@@ -109,7 +109,7 @@ Use stable ordering to keep diffs small.
 Task order:
 
 ```yaml
-id: ...
+task_id: ...
 goal: ...
 context: ...
 constraints: ...

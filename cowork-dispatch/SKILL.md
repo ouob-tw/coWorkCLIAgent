@@ -95,7 +95,7 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
 2. Create **one summary task** that points to the plan file. Do not split the plan into multiple granular tasks — Codex reads the plan itself and executes phases in order.
 3. Read `.cowork/tasks.yaml` using the queue rules below.
 4. Append the task with stable field order:
-   `id`, `goal`, `context`, `constraints`, `created_by`, `created_at`.
+   `task_id`, `goal`, `context`, `constraints`, `created_by`, `created_at`.
    - `goal`: a single sentence describing the full feature implementation.
    - `context.plan_file`: path to the approved plan.
    - `context.spec_file`: path to the approved spec (if any).
@@ -136,14 +136,25 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
 12. **Completion monitoring** — after the initial error check passes, use a single background file-based monitor. Do not repeatedly call `zmx history`.
 
     ```bash
-    until [ -f .cowork/results.yaml ] && grep -q '^\[\]' .cowork/tasks.yaml 2>/dev/null; do
+    EXPECTED_TASK_ID="<dispatched-task_id>"
+    until [ -f .cowork/results.yaml ] && uv run --with pyyaml python - "$EXPECTED_TASK_ID" <<'PY'
+    import sys
+    from pathlib import Path
+    import yaml
+
+    expected = sys.argv[1]
+    data = yaml.safe_load(Path(".cowork/results.yaml").read_text()) or []
+    sys.exit(0 if isinstance(data, list) and data and isinstance(data[0], dict) and data[0].get("task_id") == expected else 1)
+    PY
+    do
       sleep 30
     done
     zmx history cx-<name> | tail -60
     ```
 
     Rules:
-    - Check file state (`tasks.yaml` → `[]` and `results.yaml` exists), not zmx history output (format is unstable: `Wrote` vs `Edited`).
+    - Completion is confirmed only when parsed `.cowork/results.yaml` is a YAML list whose first item is a dict and its `task_id` matches the dispatched task's `task_id`.
+    - Do not treat `tasks.yaml` → `[]`, `.cowork/results.yaml` existence, or zmx history output as completion; those are auxiliary signals only.
     - Use `sleep 30`, not `sleep 10`.
     - Run this as a single background monitor. Do not manually call `zmx history` in a loop.
     - At most one additional mid-progress check at 3 minutes. No consecutive checks.
@@ -175,9 +186,9 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
 ## Task Generation Rules
 
 - **One task per dispatch.** Create a single summary task that covers the entire approved plan. Codex reads the plan file and executes phases autonomously. Do not decompose the plan into per-phase or per-file tasks.
-- Task IDs use `task-{unix_ms}-{random_hex_3}`, for example `task-1747536000000-a3f`.
+- Task `task_id` values use `task-{unix_ms}-{random_hex_3}`, for example `task-1747536000000-a3f`.
 - Each task contains only:
-  - `id`
+  - `task_id`
   - `goal` — one sentence describing the full implementation scope
   - `context`
     - `plan_file` — path to the approved plan (Codex reads this to determine phases and steps)

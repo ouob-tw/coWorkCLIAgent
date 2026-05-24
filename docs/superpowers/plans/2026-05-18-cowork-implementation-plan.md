@@ -22,7 +22,7 @@
 8. 外部 Codex CLI 必須透過 `zmx` 持久化 session 啟動，session 名稱格式為 `cx-<簡短英文任務名>`。
 9. `cowork-dispatch` 啟動外部 session 前必須使用 `zmx list` 檢查同名 session。
 10. `cowork-dispatch` 啟動外部 session 後必須等待 3 分鐘並檢查 `zmx history`，處理 503 重送與帳號額度不足切換。
-11. `.cowork/tasks.yaml` 的 task 欄位只包含 `id`、`goal`、`context`、`constraints`、`created_by`、`created_at`。
+11. `.cowork/tasks.yaml` 的 task 欄位只包含 `task_id`、`goal`、`context`、`constraints`、`created_by`、`created_at`。
 12. `.cowork/results.yaml` 的 result 欄位包含 `task_id`、`goal`、`status`、`summary`、`outputs`、`errors`、`completed_at`。
 
 ---
@@ -82,8 +82,8 @@ compatibility: Designed for Claude Code. Requires git, zmx, codex, codex-multi-a
    - `clean`：將 `.cowork/results.yaml` 重設為 `[]`。
 
 5. 任務產生規則：
-   - 任務 ID 格式為 `task-{unix_ms}-{random_hex_3}`。
-   - 每個任務包含 `id`、`goal`、`context`、`constraints`、`created_by: claude-code`、`created_at`。
+   - 任務 `task_id` 格式為 `task-{unix_ms}-{random_hex_3}`。
+   - 每個任務包含 `task_id`、`goal`、`context`、`constraints`、`created_by: claude-code`、`created_at`。
    - `context.plan_file` 與 `context.related_files` 使用專案根目錄相對路徑。
    - `constraints` 必須保留 plan 中的實作限制與使用者限制。
    - 寫入前若 `.cowork/tasks.yaml` 不存在、空字串或 `[]`，視為空佇列。
@@ -102,6 +102,7 @@ zmx run cx-<name> "cd \"$PROJECT_DIR\" && codex --approval-mode full-auto 'You a
    - 若 history 顯示 503 類型錯誤，執行 `zmx send cx-<name> "GO"`，並回報「遇到 503，已重試」。
    - 若 history 顯示帳號額度不足，執行 `codex-multi-auth check`，找出有額度帳號後執行 `codex-multi-auth switch <帳號編號>`，再執行 `zmx send cx-<name> "GO"`，並回報「已切換帳號並重試」。
    - 若無法找到有額度帳號，回報使用者需要手動處理，不得刪除 `.cowork/tasks.yaml` 中已派發任務。
+   - 後續完成監控必須解析 `.cowork/results.yaml`。只有第一個 YAML list item 是 dict，且其 `task_id` 等於本次派發任務的 `task_id` 時，才表示 Codex 已完成該任務；不得只用 `.cowork/results.yaml` 存在或 `.cowork/tasks.yaml` 變成 `[]` 判定完成。
 
 7. 使用者可見操作：
    - 告知使用者可用 `zmx attach cx-<name>` 查看即時進度。
@@ -120,7 +121,7 @@ zmx run cx-<name> "cd \"$PROJECT_DIR\" && codex --approval-mode full-auto 'You a
 - [ ] 寫入「何時使用」章節，明確列出 CoWork、dispatch、status、clean、spec、plan 等觸發情境。
 - [ ] 寫入「角色分工」章節，禁止將審核任務寫入 YAML。
 - [ ] 寫入 `init`、`spec`、`plan`、`dispatch`、`status`、`clean` 六個工作流，每個工作流都用有序步驟描述。
-- [ ] 寫入任務 ID 與 task 欄位產生規則。
+- [ ] 寫入任務 `task_id` 與 task 欄位產生規則。
 - [ ] 寫入 `.cowork/tasks.yaml` 讀取、空狀態與壞檔備份規則。
 - [ ] 寫入 `dispatch` 的 `zmx list` 重名檢查、`zmx run` 啟動、3 分鐘後 `zmx history` 健康檢查。
 - [ ] 寫入 503 錯誤時使用 `zmx send cx-<name> "GO"` 重送。
@@ -193,7 +194,7 @@ compatibility: Designed for Codex CLI. Requires shell access and a project works
 6. 子任務規則：
    - 只有在大任務必須拆解且仍可保持可追蹤時，才追加新任務到 `tasks.yaml`。
    - 子任務 `created_by` 必須是 `codex`。
-   - 子任務仍使用 `task-{unix_ms}-{random_hex_3}` ID 格式。
+   - 子任務仍使用 `task-{unix_ms}-{random_hex_3}` `task_id` 格式。
    - 子任務不得加入 spec/plan 審核工作。
 
 7. 寫入規則：
@@ -252,7 +253,7 @@ compatibility: Designed for Codex CLI. Requires shell access and a project works
 2. `tasks.yaml` schema：
 
 ```yaml
-- id: "task-1747536000000-a3f"
+- task_id: "task-1747536000000-a3f"
   goal: "在 src/models/user.py 使用 SQLAlchemy 實作 User model"
   context:
     plan_file: "docs/plans/2026-05-18-user-api-plan.md"
@@ -267,7 +268,7 @@ compatibility: Designed for Codex CLI. Requires shell access and a project works
 ```
 
 3. `tasks.yaml` 欄位表：
-   - `id`：必填，string，格式 `task-{unix_ms}-{random_hex_3}`。
+   - `task_id`：必填，string，格式 `task-{unix_ms}-{random_hex_3}`。
    - `goal`：必填，string，執行目標。
    - `context`：選填，object。
    - `context.plan_file`：選填，string，專案相對路徑。
@@ -290,7 +291,7 @@ compatibility: Designed for Codex CLI. Requires shell access and a project works
 ```
 
 5. `results.yaml` 欄位表：
-   - `task_id`：必填，string，對應原始任務 ID。
+   - `task_id`：必填，string，與原始任務的 `task_id` 相同。
    - `goal`：必填，string，從原始任務複製。
    - `status`：必填，`completed`、`failed` 或 `partial`。
    - `summary`：必填，string。
@@ -332,7 +333,7 @@ compatibility: Designed for Codex CLI. Requires shell access and a project works
 - `cowork-runner/references/yaml-schema.md` 存在。
 - 文件包含 `tasks.yaml` 與 `results.yaml` 的完整 YAML 範例。
 - 文件包含 `tasks.yaml` 與 `results.yaml` 的欄位表。
-- 文件明確定義 `task-{unix_ms}-{random_hex_3}` ID 格式。
+- 文件明確定義 `task-{unix_ms}-{random_hex_3}` `task_id` 格式。
 - 文件明確定義 `completed`、`failed`、`partial` 三種結果狀態。
 - 文件明確定義 `[]` 是標準空狀態。
 - 文件明確定義 YAML 解析失敗時的 `.bad` 備份行為。

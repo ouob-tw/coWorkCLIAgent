@@ -160,7 +160,7 @@ cowork-dispatch skill 提供兩個獨立功能：
 **標準空狀態：** 檔案內容為 `[]`（空陣列）。檔案不存在或內容為空字串也視為無任務。
 
 ```yaml
-- id: "task-1747536000000-a3f"
+- task_id: "task-1747536000000-a3f"
   goal: "在 src/models/user.py 使用 SQLAlchemy 實作 User model"
   context:                     # 選填
     plan_file: "docs/plans/2026-05-18-user-api-plan.md"  # 字串，相對於專案根目錄的路徑
@@ -178,7 +178,7 @@ cowork-dispatch skill 提供兩個獨立功能：
 
 | 欄位 | 必填 | 型別 | 說明 |
 |------|------|------|------|
-| `id` | 是 | string | `task-{unix_ms}-{random_hex_3}` 格式（毫秒時間戳 + 3 位隨機 hex），唯一值 |
+| `task_id` | 是 | string | `task-{unix_ms}-{random_hex_3}` 格式（毫秒時間戳 + 3 位隨機 hex），唯一值 |
 | `goal` | 是 | string | 要實作的內容（來自核准的計劃） |
 | `context` | 否 | object | `plan_file`（string）、`related_files`（string[]）— 相對於專案根目錄的路徑 |
 | `constraints` | 否 | string[] | Codex 實作時必須遵守的規則 |
@@ -208,7 +208,7 @@ YAML 列表。最新結果插入頂部。
 
 | 欄位 | 必填 | 型別 | 說明 |
 |------|------|------|------|
-| `task_id` | 是 | string | 對應原始任務的 id |
+| `task_id` | 是 | string | 與原始任務的 `task_id` 相同 |
 | `goal` | 是 | string | 從原始任務複製 |
 | `status` | 是 | string | `completed`、`failed` 或 `partial` |
 | `summary` | 是 | string | 完成了什麼 |
@@ -290,10 +290,11 @@ YAML 列表。最新結果插入頂部。
 
 1. **審核在內部完成** — spec/plan 審核透過 Codex plugin 在 Claude Code 內進行，不經過 tasks.yaml
 2. **tasks.yaml 僅限執行任務** — 只有執行任務，沒有審核任務
-3. **ID 格式** — `task-{unix_ms}-{random_hex_3}` 毫秒時間戳 + 隨機值避免衝突
+3. **`task_id` 格式** — `task-{unix_ms}-{random_hex_3}` 毫秒時間戳 + 隨機值避免衝突
 4. **results.yaml 只在頂部插入** — 最新在上，完整歷史保留到手動清空
-5. **完成即移除任務** — Codex 完成任務後從 tasks.yaml 移除，不論成功或失敗
-6. **不自動重試** — 失敗任務由使用者決定是否重新派發
-7. **zmx session 命名** — `cx-<簡短英文任務名>`，dispatch 前先 `zmx list` 檢查不重複
-8. **健康檢查一次** — dispatch 後等 3 分鐘，`zmx history cx-<name> | tail -20` 檢查一次，503 則 `zmx send cx-<name> "GO"`，額度不足則 `codex-multi-auth check` 後 `codex-multi-auth switch`
-9. **Conventional Commits** — spec + plan 完成後一起提交：`docs: add <feature-name> spec and implementation plan`
+5. **派發完成判定** — dispatch 後續監控必須解析 `.cowork/results.yaml`，只有第一個 YAML list item 是 dict 且 `task_id` 等於本次派發任務的 `task_id` 時，才表示 Codex 已完成該任務
+6. **完成即移除任務** — Codex 完成任務後從 tasks.yaml 移除，不論成功或失敗
+7. **不自動重試** — 失敗任務由使用者決定是否重新派發
+8. **zmx session 命名** — `cx-<簡短英文任務名>`，dispatch 前先 `zmx list` 檢查不重複
+9. **健康檢查一次** — dispatch 後等 3 分鐘，`zmx history cx-<name> | tail -20` 檢查一次，503 則 `zmx send cx-<name> "GO"`，額度不足則 `codex-multi-auth check` 後 `codex-multi-auth switch`
+10. **Conventional Commits** — spec + plan 完成後一起提交：`docs: add <feature-name> spec and implementation plan`
