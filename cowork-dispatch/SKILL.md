@@ -118,12 +118,13 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
    - Always wrap the codex command with `bash -c '...'`. zmx passes arguments as-is; without `bash -c`, a command string with flags is treated as a single executable name.
    - Use `codex --dangerously-bypass-approvals-and-sandbox` (not `codex exec`; the full client handles zmx sessions correctly).
 
-8. **Initial error check** — after starting the zmx session, wait with a fixed sleep, then inspect recent history once:
+8. **Initial error check** — after starting the zmx session, run a delayed health check as a **background task** using Bash `run_in_background: true`:
 
    ```bash
-   sleep 180
-   zmx history cx-<name> | tail -20
+   sleep 180 && zmx history cx-<name> | tail -20
    ```
+
+   **Claude Code integration:** You MUST call Bash with `run_in_background: true` for this command. Claude Code blocks leading `sleep` in foreground commands. The background task will notify you when it completes — do not poll or check on it. Continue to step 12 (completion monitoring) immediately after launching this background check; handle any errors (steps 9-11) when the background result arrives.
 
    Rules:
    - Do not calculate elapsed time from `zmx list`, `created=...`, `date +%s`, or any other zmx timestamp output.
@@ -146,36 +147,50 @@ init → spec (brainstorm + draft + Codex review loop) → plan (Codex draft + C
 
 11. If no account has quota, report that manual action is required. Do not delete dispatched tasks from `.cowork/tasks.yaml`.
 
-12. **Completion monitoring** — after the initial error check passes, use a single background file-based monitor. Do not repeatedly call `zmx history`.
+12. **Completion monitoring** — use the **Monitor** tool to poll for task completion and session health. Do not repeatedly call `zmx history` manually.
 
     ```bash
     EXPECTED_TASK_ID="<dispatched-task_id>"
-    until [ -f .cowork/results.yaml ] && uv run --with pyyaml python - "$EXPECTED_TASK_ID" <<'PY'
-    import sys
-    from pathlib import Path
-    import yaml
-
+    SESSION="cx-<name>"
+    ITER=0
+    while true; do
+      if ! zmx list 2>/dev/null | grep -q "$SESSION"; then
+        echo "ALERT: session $SESSION no longer running"
+        zmx history "$SESSION" | tail -20
+        break
+      fi
+      if [ -f .cowork/results.yaml ] && uv run --with pyyaml python - "$EXPECTED_TASK_ID" <<'PY'
+    import sys; from pathlib import Path; import yaml
     expected = sys.argv[1]
     data = yaml.safe_load(Path(".cowork/results.yaml").read_text()) or []
     sys.exit(0 if isinstance(data, list) and data and isinstance(data[0], dict) and data[0].get("task_id") == expected else 1)
     PY
-    do
+      then
+        echo "DONE: task $EXPECTED_TASK_ID completed"
+        zmx history "$SESSION" | tail -20
+        break
+      fi
+      ITER=$((ITER + 1))
+      if [ $((ITER % 6)) -eq 0 ]; then
+        echo "heartbeat: session $SESSION still running, waiting for results ($((ITER * 30))s elapsed)"
+      fi
       sleep 30
     done
-    zmx history cx-<name> | tail -60
     ```
 
+    **Claude Code integration:** Use the **Monitor** tool (not Bash) to run this script. Set `timeout_ms` to `3600000` (1 hour) and `persistent` to `false`. Each `echo` line becomes a notification — you will be alerted immediately if the session dies, get a heartbeat every ~3 minutes, and see the final `zmx history` output on completion. Continue working or wait for notifications after launching the monitor.
+
     Rules:
+    - The monitor checks two things each iteration: (1) session is still alive via `zmx list`, (2) `results.yaml` contains the expected `task_id`.
     - Completion is confirmed only when parsed `.cowork/results.yaml` is a YAML list whose first item is a dict and its `task_id` matches the dispatched task's `task_id`.
     - Do not treat `tasks.yaml` → `[]`, `.cowork/results.yaml` existence, or zmx history output as completion; those are auxiliary signals only.
     - Use `sleep 30`, not `sleep 10`.
-    - Run this as a single background monitor. Do not manually call `zmx history` in a loop.
-    - At most one additional mid-progress check after another fixed `sleep 180`. No consecutive checks.
-    - Only read `zmx history` once after the monitor signals completion.
+    - Do not launch additional `zmx history` checks outside the monitor. The monitor handles everything.
+    - If the monitor emits `ALERT` (session died), check the tail output for errors and handle per steps 9-11.
 
 13. Tell the user:
     - `zmx attach cx-<name>` shows live progress.
-    - `zmx history cx-<name> | tail -30` shows recent output.
+    - `zmx history cx-<name> | tail -20` shows recent output.
     - `zmx wait cx-<name>` blocks until the session task completes.
     - `zmx list` shows all sessions.
     - `Ctrl+\` detaches from an attached session without terminating Codex.
