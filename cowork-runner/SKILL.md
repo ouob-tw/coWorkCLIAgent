@@ -32,7 +32,20 @@ Use this skill when:
 - Each phase should leave the project in a runnable state before moving to the next.
 - Simple tasks (no plan file, clear goal): execute directly.
 - Complex tasks with a plan file: follow the plan's phases sequentially. Do not skip phases or reorder them.
-- Sub-agent work divisions are allowed when available and must stay within the queued task's goal and constraints.
+
+## Skill Usage
+
+- Before executing a task, judge whether its domain matches an available skill
+  (e.g. a FastAPI endpoint task → a FastAPI response-convention skill, a serial
+  import task → an import skill). Load that skill only when the task clearly
+  touches that domain — never speculatively.
+- When a skill applies, use Codex's native skill mechanism to load it, and you
+  may delegate the work to a sub-agent so the skill's instructions stay scoped
+  to that sub-task.
+- Sub-agent work divisions and any loaded skill must stay within the queued
+  task's `goal` and `constraints`. A skill must not expand task scope; if a
+  skill's guidance conflicts with the task constraints, the constraints win.
+- This is the runner's own judgment. Dispatch does not pre-specify skills.
 
 ## Processing Flow
 
