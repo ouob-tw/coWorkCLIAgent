@@ -1,130 +1,108 @@
-# CoWork YAML Schema
+# CoWork YAML 結構定義
 
-This file is the complete reference for `.cowork/tasks.yaml`, `.cowork/results.yaml`, parse errors, empty states, and status summaries used by `cowork-runner`.
+`.cowork/tasks.yaml` 與 `.cowork/results.yaml` 的完整結構、錯誤處理規則與狀態摘要。
 
 ## tasks.yaml
 
-`tasks.yaml` is a YAML list of approved implementation tasks. The runner processes tasks from top to bottom.
+YAML 列表，包含已核准的實作任務。Runner 由上而下處理。
 
 ```yaml
 - task_id: "task-1747536000000-a3f"
-  goal: "Implement the User model in src/models/user.py with SQLAlchemy"
+  goal: "在 src/models/user.py 實作 SQLAlchemy User 模型"
   context:
     plan_file: "docs/plans/2026-05-18-user-api-plan.md"
     related_files:
       - "src/models/"
       - "src/db.py"
   constraints:
-    - "Follow FastAPI conventions"
-    - "Use async SQLAlchemy"
+    - "遵循 FastAPI 慣例"
+    - "使用 async SQLAlchemy"
   created_by: claude-code
   created_at: "2026-05-18T10:00:00Z"
 ```
 
-### tasks.yaml Fields
+### 欄位定義
 
-| Field | Required | Type | Meaning |
-|---|---:|---|---|
-| `task_id` | yes | string | Unique `task_id` value in `task-{unix_ms}-{random_hex_3}` format. |
-| `goal` | yes | string | Implementation goal. |
-| `context` | no | object | Supporting context for execution. |
-| `context.plan_file` | no | string | Project-root-relative path to the approved plan. |
-| `context.related_files` | no | string array | Project-root-relative files or directories relevant to the task. |
-| `constraints` | no | string array | Rules the runner must preserve while implementing. |
-| `created_by` | yes | string | `claude-code` for dispatch-created tasks or `codex` for runner-created follow-up tasks. |
-| `created_at` | yes | ISO 8601 string | Task creation timestamp. |
+| 欄位 | 必填 | 類型 | 說明 |
+|------|:----:|------|------|
+| `task_id` | 是 | string | 唯一識別碼，格式 `task-{unix_ms}-{random_hex_3}` |
+| `goal` | 是 | string | 實作目標 |
+| `context` | 否 | object | 執行輔助資訊 |
+| `context.plan_file` | 否 | string | 專案根目錄相對路徑，指向已核准計劃 |
+| `context.related_files` | 否 | string[] | 相關檔案或目錄 |
+| `constraints` | 否 | string[] | 實作約束 |
+| `created_by` | 是 | string | `claude-code` 或 `codex` |
+| `created_at` | 是 | ISO 8601 | 建立時間 |
 
 ## results.yaml
 
-`results.yaml` is a YAML list of execution results. Newest results are inserted at the top.
+YAML 列表，最新結果置頂。
 
 ```yaml
 - task_id: "task-1747536000000-a3f"
-  goal: "Implement the User model in src/models/user.py with SQLAlchemy"
+  goal: "在 src/models/user.py 實作 SQLAlchemy User 模型"
   status: completed
-  summary: "Created the User model with id, email, name, and created_at fields."
+  summary: "建立 User 模型，包含 id、email、name、created_at 欄位。"
   outputs:
     - "src/models/user.py"
   errors: []
   completed_at: "2026-05-18T10:05:00Z"
 ```
 
-### results.yaml Fields
+### 欄位定義
 
-| Field | Required | Type | Meaning |
-|---|---:|---|---|
-| `task_id` | yes | string | Same `task_id` value from the processed task. |
-| `goal` | yes | string | Original task goal copied into the result. |
-| `status` | yes | string | `completed`, `failed`, or `partial`. |
-| `summary` | yes | string | What happened. For `partial`, include completed and incomplete scope. |
-| `outputs` | no | string array | Project-root-relative files created or modified. |
-| `errors` | no | object array | Failure details. Each object contains `code` and `message`. |
-| `completed_at` | yes | ISO 8601 string | Result completion timestamp. |
+| 欄位 | 必填 | 類型 | 說明 |
+|------|:----:|------|------|
+| `task_id` | 是 | string | 對應任務的 `task_id` |
+| `goal` | 是 | string | 原始任務目標 |
+| `status` | 是 | string | `completed`、`partial`、`failed` |
+| `summary` | 是 | string | 執行摘要。`partial` 須說明已完成與未完成範圍 |
+| `outputs` | 否 | string[] | 建立或修改的檔案 |
+| `errors` | 否 | object[] | 每個物件含 `code` 和 `message` |
+| `completed_at` | 是 | ISO 8601 | 完成時間 |
 
-### Error Object
+### 錯誤物件
 
 ```yaml
 errors:
   - code: "test_failure"
-    message: "Unit tests failed in tests/test_user.py."
+    message: "tests/test_user.py 的單元測試失敗。"
 ```
 
-## Empty State
+## 空狀態
 
-- Standard empty `tasks.yaml` content is `[]`.
-- Standard empty `results.yaml` content is `[]`.
-- Missing files and empty strings are treated as `[]` when reading.
-- When writing back, normalize empty queue or result files to `[]`.
+- 標準空內容為 `[]`。
+- 檔案遺失或空字串時視為 `[]`。
+- 寫回時正規化為 `[]`。
 
-## Parse Error Handling
+## 解析錯誤處理
 
-### tasks.yaml Parse Failure
+### tasks.yaml 解析失敗
 
-1. Output an error that `.cowork/tasks.yaml` could not be parsed.
-2. Back up the bad file as `.cowork/tasks.yaml.bad`.
-3. If `.cowork/tasks.yaml.bad` already exists, use a timestamped or otherwise unique filename such as `.cowork/tasks.yaml.20260520T120000Z.bad`.
-4. Recreate `.cowork/tasks.yaml` with `[]`.
-5. Stop the current runner execution and exit normally so the user can inspect the bad file.
+1. 輸出錯誤訊息。
+2. 備份為 `.cowork/tasks.yaml.bad`（已存在則用時間戳命名，如 `.cowork/tasks.yaml.20260520T120000Z.bad`）。
+3. 重建 `tasks.yaml` 內容為 `[]`。
+4. 正常退出，讓使用者檢查壞檔。
 
-### results.yaml Parse Failure
+### results.yaml 解析失敗
 
-1. Output a warning that `.cowork/results.yaml` could not be parsed.
-2. Back up the bad file as `.cowork/results.yaml.bad`.
-3. If `.cowork/results.yaml.bad` already exists, use a timestamped or otherwise unique filename such as `.cowork/results.yaml.20260520T120000Z.bad`.
-4. Create a new `.cowork/results.yaml` containing only the current result.
-5. Continue processing if it is safe to do so.
+1. 輸出警告。
+2. 備份為 `.cowork/results.yaml.bad`（已存在則用時間戳命名）。
+3. 建立新 `results.yaml`，僅含當前結果。
+4. 安全時繼續處理。
 
-## Status Summary Rules
+## 狀態摘要規則
 
-- `pending`: tasks still present in `.cowork/tasks.yaml`.
-- `completed`: results with `status: completed`.
-- `failed`: results with `status: failed`.
-- `partial`: results with `status: partial`.
-- `running`: matching `cx-` session state from `zmx list`.
+| 狀態 | 來源 |
+|------|------|
+| `pending` | `tasks.yaml` 中的任務 |
+| `completed` | `results.yaml` 中 `status: completed` |
+| `failed` | `results.yaml` 中 `status: failed` |
+| `partial` | `results.yaml` 中 `status: partial` |
+| `running` | `zmx list` 中匹配的 `cx-` 工作階段 |
 
-## Stable Field Order
+## 欄位順序
 
-Use stable ordering to keep diffs small.
+任務：`task_id` → `goal` → `context` → `constraints` → `created_by` → `created_at`
 
-Task order:
-
-```yaml
-task_id: ...
-goal: ...
-context: ...
-constraints: ...
-created_by: ...
-created_at: ...
-```
-
-Result order:
-
-```yaml
-task_id: ...
-goal: ...
-status: ...
-summary: ...
-outputs: ...
-errors: ...
-completed_at: ...
-```
+結果：`task_id` → `goal` → `status` → `summary` → `outputs` → `errors` → `completed_at`

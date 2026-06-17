@@ -1,106 +1,67 @@
 ---
 name: cowork-runner
-description: "Use when executing CoWork queued implementation tasks from .cowork/tasks.yaml with Codex CLI, updating results.yaml, creating follow-up tasks, or running inside a zmx session started by cowork-dispatch."
-compatibility: "Designed for Codex CLI. Requires shell access and a project workspace containing .cowork/."
+description: "在 Codex CLI 中執行 CoWork 佇列任務：讀取 tasks.yaml、依計劃實作、寫入 results.yaml、清除已處理任務。"
+compatibility: "Codex CLI 專用。需要 shell 存取與含 .cowork/ 的專案工作區。"
 ---
 
 # CoWork Runner
 
-Execute approved CoWork implementation tasks from `.cowork/tasks.yaml` inside Codex CLI, usually from a `zmx` session started by `cowork-dispatch`.
+在 Codex CLI 中執行 `.cowork/tasks.yaml` 的已核准實作任務，通常由 `cowork-dispatch` 透過 `zmx` 工作階段啟動。
 
-Keep this `SKILL.md` under 500 lines. See `references/yaml-schema.md` for the complete YAML schema and error handling rules.
+## 適用時機
 
-## When to Use
+- 提示詞包含 `cowork-runner`
+- 被要求處理 `.cowork/tasks.yaml` 或 `.cowork/results.yaml`
+- 在 `cowork-dispatch` 啟動的 `zmx` 工作階段內執行
 
-Use this skill when:
+## 執行邊界
 
-- A prompt says `cowork-runner`.
-- A prompt asks Codex CLI to process `.cowork/tasks.yaml` or `.cowork/results.yaml`.
-- Codex CLI is running inside a `zmx` session launched by `cowork-dispatch`.
-- The task concerns CoWork queued implementation tasks.
+- 僅執行已核准的實作任務。不處理規格審查或計劃審查。
+- 處理完當前佇列後正常退出。不建立背景守護程序或長期監聽器。
 
-## Execution Boundaries
+## 處理流程
 
-- Do not create a background daemon or long-running watcher.
-- Process the current queue, write results, update tasks, then exit normally.
-- Do not handle spec review or plan review.
-- Only execute approved implementation tasks.
+1. 讀取 `.cowork/tasks.yaml`。
+2. 檔案遺失、空、或 `[]` → 輸出 `No pending tasks`，exit code `0` 退出。
+3. YAML 解析失敗 → 依 `references/yaml-schema.md` 的解析錯誤處理流程。
+4. 由上而下處理任務，每個任務依照以下檢查清單執行：
 
-## Task Execution Strategy
+```
+- [ ] 讀取任務的 goal、context、constraints
+- [ ] 若有 plan_file → 讀取計劃檔案，確認階段順序
+- [ ] 判斷是否匹配可用領域技能，匹配時載入
+- [ ] 依計劃階段順序（或 goal）執行實作
+- [ ] 在 results.yaml 頂部插入結果（使用相同 task_id）
+- [ ] 從 tasks.yaml 移除此任務
+```
 
-- Tasks typically point to a plan file via `context.plan_file`. **Always read the plan file first** and execute all phases in the order defined by the plan.
-- Each phase should leave the project in a runnable state before moving to the next.
-- Simple tasks (no plan file, clear goal): execute directly.
-- Complex tasks with a plan file: follow the plan's phases sequentially. Do not skip phases or reorder them.
+補充規則：
+- 有 `context.plan_file` 時，**必須先讀取計劃**，依定義的階段順序執行。每個階段完成後專案應可執行。
+- 無計劃檔案的簡單任務：依 `goal` 直接執行。
+- 技能不得擴大任務範圍；與 `constraints` 衝突時以 `constraints` 為準。
+- 從 `tasks.yaml` 移除已處理任務（不論完成、部分完成、或失敗）。保留未處理任務。
 
-## Skill Usage
+## 結果狀態
 
-- Before executing a task, judge whether its domain matches an available skill
-  (e.g. a FastAPI endpoint task → a FastAPI response-convention skill, a serial
-  import task → an import skill). Load that skill only when the task clearly
-  touches that domain — never speculatively.
-- When a skill applies, use Codex's native skill mechanism to load it, and you
-  may delegate the work to a sub-agent so the skill's instructions stay scoped
-  to that sub-task.
-- Sub-agent work divisions and any loaded skill must stay within the queued
-  task's `goal` and `constraints`. A skill must not expand task scope; if a
-  skill's guidance conflicts with the task constraints, the constraints win.
-- This is the runner's own judgment. Dispatch does not pre-specify skills.
+| 狀態 | 意義 |
+|------|------|
+| `completed` | 任務目標完全實現 |
+| `partial` | 部分實現；`summary` 須說明已完成與未完成範圍 |
+| `failed` | 未完成；`errors` 須包含至少一個 `{code, message}` 物件 |
 
-## Processing Flow
+## 後續任務
 
-1. Read `.cowork/tasks.yaml` from the project root.
-2. If the file is missing, empty, or `[]`, output `No pending tasks`, ensure normal exit code `0`, and exit.
-3. If `tasks.yaml` cannot be parsed:
-   1. Output an error.
-   2. Back it up as `.cowork/tasks.yaml.bad`, using a timestamped unique name if needed.
-   3. Write a fresh `.cowork/tasks.yaml` containing `[]`.
-   4. Exit normally so the user can inspect the bad file.
-4. Process tasks from top to bottom.
-5. For each task, implement according to:
-   - `goal`
-   - `context.plan_file`
-   - `context.related_files`
-   - `constraints`
-6. For every processed task, insert a result at the top of `.cowork/results.yaml` using the same `task_id` value from the task.
-7. Remove the processed task from `.cowork/tasks.yaml` whether it completed, partially completed, or failed.
-8. Preserve any unprocessed tasks.
-9. Before exiting, print a terminal summary with:
-   - processed count
-   - completed count
-   - partial count
-   - failed count
-   - modified file list
+- 僅在大型任務需拆分且剩餘工作可追蹤時才新增。
+- `task_id` 格式：`task-{unix_ms}-{random_hex_3}`，`created_by: codex`。
+- 僅限實作任務，不新增審查類任務。
 
-## Result Statuses
+## 完成輸出
 
-Use exactly one of these statuses:
+- 無任務 → `No pending tasks`，exit code `0`。
+- 有任務 → 輸出各狀態計數（processed / completed / partial / failed）與修改檔案清單。
+- 處理完成後不保持 zmx 工作階段。
 
-- `completed`: the task goal was fully implemented.
-- `partial`: part of the goal was implemented; `summary` must explain completed and incomplete scope.
-- `failed`: implementation did not complete; `errors` must include at least one object with `code` and `message`.
+## 注意事項
 
-## Result Write Rules
-
-- Insert newest results at the top of `.cowork/results.yaml`.
-- If `results.yaml` is missing or empty, treat it as `[]`.
-- Empty result files should be normalized to `[]`.
-- If `results.yaml` cannot be parsed:
-  1. Back it up as `.cowork/results.yaml.bad`, using a timestamped unique name if needed.
-  2. Create a new `results.yaml` containing only the current result.
-  3. Output a warning.
-- Write YAML with stable field order:
-  `task_id`, `goal`, `status`, `summary`, `outputs`, `errors`, `completed_at`.
-
-## Follow-Up Tasks
-
-- Add follow-up tasks only when a large task must be split and the remaining work is still trackable.
-- Follow-up task `task_id` values use `task-{unix_ms}-{random_hex_3}`.
-- Follow-up tasks use `created_by: codex`.
-- Follow-up tasks must remain implementation tasks; never add spec review or plan review tasks.
-
-## Completion Output
-
-- If no task exists, output `No pending tasks` and exit with code `0`.
-- If tasks were processed, output the count by status and the modified files.
-- Do not keep the zmx session alive after the current queue has been processed.
+- 不要跳過或重新排序計劃中的階段。
+- 結果寫入規則、YAML 欄位順序、空狀態處理、解析錯誤備份流程皆參見 `references/yaml-schema.md`。
