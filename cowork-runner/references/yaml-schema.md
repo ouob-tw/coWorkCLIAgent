@@ -17,7 +17,7 @@ YAML 列表，包含已核准的實作任務。Runner 由上而下處理。
   constraints:
     - "遵循 FastAPI 慣例"
     - "使用 async SQLAlchemy"
-  created_by: claude-code
+  created_by: dispatch-agent
   created_at: "2026-05-18T10:00:00Z"
 ```
 
@@ -31,7 +31,7 @@ YAML 列表，包含已核准的實作任務。Runner 由上而下處理。
 | `context.plan_file` | 否 | string | 專案根目錄相對路徑，指向已核准計劃 |
 | `context.related_files` | 否 | string[] | 相關檔案或目錄 |
 | `constraints` | 否 | string[] | 實作約束 |
-| `created_by` | 是 | string | `claude-code` 或 `codex` |
+| `created_by` | 是 | string | 建立此任務的 agent 識別名稱 |
 | `created_at` | 是 | ISO 8601 | 建立時間 |
 
 ## results.yaml
@@ -99,7 +99,7 @@ errors:
 | `completed` | `results.yaml` 中 `status: completed` |
 | `failed` | `results.yaml` 中 `status: failed` |
 | `partial` | `results.yaml` 中 `status: partial` |
-| `running` | `zmx list` 中匹配的 `cx-` 工作階段 |
+| `running` | `zmx list` 中匹配的 `cx-` 或 `cc-` 工作階段 |
 
 ## 欄位順序
 
