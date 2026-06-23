@@ -117,25 +117,38 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
 1. 在專案根目錄建立 `.cowork/`（如不存在）。
 2. 確保 `.gitignore` 排除 `.cowork/`；若無則新增並提交。
 3. 建立 `tasks.yaml` 和 `results.yaml`，初始內容為 `[]`。不覆寫已有內容的檔案。
+4. 建立 `logs/` 子目錄（如不存在）。
 
 ### spec
 
 1. 先使用 Superpowers 腦力激盪工作流。
 2. 使用 Superpowers 撰寫計劃工作流產出規格文件。
-3. `spec_writer` 撰寫初稿 → 依 `spec_reviewer` 的 client 類型呼叫審查（CLI 語法參見「完整指令範例」）。
-4. 小問題由 reviewer 直接修正；重大問題由 writer 修正後重新送審。
-5. 迴圈直到規格核准。不將審查工作寫入 `tasks.yaml`。
+3. `spec_writer` 撰寫初稿 → 依 `spec_reviewer` 的 client 類型呼叫審查。
+4. CLI client 執行時 stdout 回傳給 AI，同時將完整輸出（stdout + stderr）寫入 log 檔：
+   ```bash
+   LOG=.cowork/logs/spec-review-$(date -u +%Y%m%dT%H%M%SZ).log
+   codex exec ... "review prompt" 2>>"$LOG" | tee -a "$LOG"
+   ```
+   log 命名格式：`spec-review-<ISO8601>.log`。多輪審查產生多個 log 檔。
+5. 小問題由 reviewer 直接修正；重大問題由 writer 修正後重新送審。
+6. 迴圈直到規格核准。不將審查工作寫入 `tasks.yaml`。
 
 ### plan
 
 1. 規格核准後才開始。
-2. 依 `plan_writer` 的 client 類型呼叫產生實作計劃（CLI 語法參見「完整指令範例」）→ `plan_reviewer` 對照規格審查。
-3. 有缺漏或偏離時，回饋 writer 修正後再審。
-4. 規格與計劃皆核准後一起提交：
+2. 依 `plan_writer` 的 client 類型呼叫產生實作計劃 → `plan_reviewer` 對照規格審查。
+3. CLI client 執行時 stdout 回傳給 AI，同時將完整輸出（stdout + stderr）寫入 log 檔：
+   ```bash
+   LOG=.cowork/logs/plan-write-$(date -u +%Y%m%dT%H%M%SZ).log
+   codex exec ... "plan prompt" 2>>"$LOG" | tee -a "$LOG"
+   ```
+   log 命名格式：`plan-write-<ISO8601>.log`。審查迴圈中每次呼叫產生獨立 log。
+4. 有缺漏或偏離時，回饋 writer 修正後再審。
+5. 規格與計劃皆核准後一起提交：
    ```bash
    git commit -m "docs: add <feature-name> spec and implementation plan"
    ```
-5. 不將計劃撰寫或審查工作寫入 `tasks.yaml`。
+6. 不將計劃撰寫或審查工作寫入 `tasks.yaml`。
 
 ### dispatch
 
@@ -210,7 +223,12 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
 
 7. 告知使用者可用指令：`zmx attach <session>`（即時檢視）、`zmx tail <session>`（即時跟蹤輸出）、`zmx history <session> | tail -20`（近期輸出）、`zmx list`（所有工作階段）、`Ctrl+\`（脫離 attach 不終止）。
 
-   **cli client（codex-exec / claude-cli）：** 直接執行 runner prompt，等待完成後讀取 `results.yaml`。不需 zmx session 管理與監控。
+   **cli client（codex-exec / claude-cli）：** 將輸出導向 log 檔後等待完成，再讀取 `results.yaml`：
+   ```bash
+   LOG=.cowork/logs/code-exec-$(date -u +%Y%m%dT%H%M%SZ).log
+   codex exec ... "runner prompt" 2>>"$LOG" | tee -a "$LOG"
+   ```
+   不需 zmx session 管理與監控。
 
 ### status
 
@@ -250,6 +268,15 @@ zmx session 被 kill 或意外中斷後，底層的 Codex/Claude 對話仍保存
    ```
 
 **不要使用 `codex resume --last` 或 `claude --continue`。** 這些指令按工作目錄取最新 session，若中間有人類手動開過 session 會恢復到錯誤的對話。
+
+## Log 規則
+
+- 所有 CLI client（codex-exec / claude-cli）執行時使用 `2>>"$LOG" | tee -a "$LOG"` 模式：
+  - stdout（fd1）→ terminal（AI 可見）+ log 檔
+  - stderr（fd2）→ 僅 log 檔
+- 命名格式：`<phase>-<ISO8601>.log`，例如 `spec-review-20260623T100500Z.log`。
+- **僅在超時或異常時**才主動讀取 log 檔排查：`tail -20 .cowork/logs/<對應 log>`。
+- zmx client 不受影響，仍用 `zmx history` 查看輸出。
 
 ## 注意事項
 
