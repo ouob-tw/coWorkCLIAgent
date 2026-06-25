@@ -132,6 +132,7 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
    log 命名格式：`spec-review-<ISO8601>.log`。多輪審查產生多個 log 檔。
 5. 小問題由 reviewer 直接修正；重大問題由 writer 修正後重新送審。
 6. 迴圈直到規格核准。不將審查工作寫入 `tasks.yaml`。
+7. **CLI 中斷防護：** 若 `codex exec` 審查因逾時或錯誤中斷，**不得自行編造審查結論**。查詢 session ID 後以 `codex exec resume` 恢復執行，取得實際審查結果。
 
 ### plan
 
@@ -144,11 +145,12 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
    ```
    log 命名格式：`plan-write-<ISO8601>.log`。審查迴圈中每次呼叫產生獨立 log。
 4. 有缺漏或偏離時，回饋 writer 修正後再審。
-5. 規格與計劃皆核准後一起提交：
+5. **CLI 中斷防護：** 若 `codex exec` 撰寫或審查因逾時或錯誤中斷，**不得自行編造計劃內容或審查結論**。查詢 session ID 後以 `codex exec resume` 恢復執行。
+6. 規格與計劃皆核准後一起提交：
    ```bash
    git commit -m "docs: add <feature-name> spec and implementation plan"
    ```
-6. 不將計劃撰寫或審查工作寫入 `tasks.yaml`。
+7. 不將計劃撰寫或審查工作寫入 `tasks.yaml`。
 
 ### dispatch
 
@@ -242,20 +244,29 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
 
 ## Session 恢復
 
-zmx session 被 kill 或意外中斷後，底層的 Codex/Claude 對話仍保存在磁碟上。恢復流程：
+Codex/Claude 對話保存在磁碟上，即使 zmx session 被 kill 或 CLI 執行中斷，仍可恢復。
+
+### 查詢 session ID
+
+codex — 從 session 檔案中搜尋 prompt 裡的 task_id，UUID 直接從檔名取：
+```bash
+grep -l "<task_id>" ~/.codex/sessions/$(date -u +%Y/%m/%d)/*.jsonl | head -1 | grep -oP '[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+```
+若跨日則搜前一天：`$(date -u -d yesterday +%Y/%m/%d)`。
+
+claude — 直接用啟動時 `--name` 指定的 `<task_id>`。
+
+### codex-exec 恢復
+
+CLI 執行（spec review、plan write 等）中斷後直接 resume，不需 zmx：
+```bash
+codex exec resume <session_uuid> "繼續執行未完成的任務"
+```
+
+### zmx session 恢復
 
 1. `zmx kill <session>`（如 session 仍存在）。
-2. 查詢 session ID：
-
-   codex — 從 session 檔案中搜尋 prompt 裡的 task_id，UUID 直接從檔名取：
-   ```bash
-   grep -l "<task_id>" ~/.codex/sessions/$(date -u +%Y/%m/%d)/*.jsonl | head -1 | grep -oP '[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}'
-   ```
-   若跨日則搜前一天：`$(date -u -d yesterday +%Y/%m/%d)`。
-
-   claude — 直接用啟動時 `--name` 指定的 `<task_id>`。
-
-3. 開新 zmx session 恢復對話：
+2. 開新 zmx session 恢復對話：
 
    codex-zmx：
    ```bash
@@ -267,7 +278,7 @@ zmx session 被 kill 或意外中斷後，底層的 Codex/Claude 對話仍保存
    zmx run cc-<name> -d bash -c 'claude --resume <task_id> --dangerously-skip-permissions -p "繼續執行未完成的任務"'
    ```
 
-**不要使用 `codex resume --last` 或 `claude --continue`。** 這些指令按工作目錄取最新 session，若中間有人類手動開過 session 會恢復到錯誤的對話。
+**不要使用 `codex exec resume --last`、`codex resume --last` 或 `claude --continue`。** 這些指令按工作目錄取最新 session，若中間有人類手動開過 session 會恢復到錯誤的對話。
 
 ## Log 規則
 
@@ -287,4 +298,5 @@ zmx session 被 kill 或意外中斷後，底層的 Codex/Claude 對話仍保存
 - `codex-multi-auth` 僅適用於 codex 系列 client。
 - 不要從 `zmx list`、`created=...`、`date +%s` 或任何 zmx 時間戳計算經過時間。
 - 不要在監控腳本之外額外執行 `zmx history` 檢查。
+- CLI client 執行中斷時，不得自行編造輸出結果。必須以 `codex exec resume <session_id>` 或 `claude --resume <session_id>` 恢復取得實際結果。
 - 佇列檔案規則參見 `cowork-runner/references/yaml-schema.md`。
