@@ -1,0 +1,159 @@
+# CoWork CLI Agent
+
+配合 [Superpowers](https://github.com/obra/superpowers) 規格驅動開發的多 Agent 協作技能組。
+
+使用者提出需求後，經過互動式腦力激盪確認方向，後續的規格審查、計劃產生、任務派發、背景執行、進度監控、結果驗收由系統自動串接，不需手動介入每個階段的銜接。遇到設計歧義或不可恢復的錯誤時會暫停請求決策。
+
+Dispatch Agent 是協調者，驅動整個生命週期並委派工作給外部 CLI Agent。Runner Agent 在獨立的背景 session 中執行實作任務，完成後寫回結果。兩者透過 YAML 佇列（`tasks.yaml` / `results.yaml`）解耦通訊，不依賴特定 Agent 框架。
+
+## 安裝
+
+需要 Unix 環境（Linux / macOS）。
+
+前置需求：
+
+| 工具 | 用途 | 必要性 |
+|------|------|--------|
+| [Node.js](https://nodejs.org/) 18+ | 執行 `npx skills` 安裝技能 | 必要 |
+| git | 版本控制、提交規格與計劃 | 必要 |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Dispatch Agent 與 Runner Agent 的執行環境之一 | 至少裝一個 |
+| [Codex CLI](https://github.com/openai/codex) | Runner Agent 的執行環境之一，也用於 spec/plan 審查 | 至少裝一個 |
+| [zmx](https://github.com/neurosnap/zmx) | 長時任務的背景 session 管理（見下方說明） | zmx client 需要 |
+| [codex-multi-auth](https://github.com/nicobailey/codex-multi-auth) | Codex 多帳號切換，配額耗盡時自動切換 | 選用 |
+
+```bash
+# 安裝 Superpowers skills（腦力激盪、規格撰寫等基礎工作流）
+npx skills add obra/superpowers
+
+# 安裝 CoWork skills
+npx skills add ouob-tw/coWorkCLIAgent
+```
+
+長時任務需要 zmx：
+
+```bash
+# 下載 zmx 二進位檔
+curl -fsSL https://github.com/neurosnap/zmx/releases/latest/download/zmx-linux-x86_64 -o ~/.local/bin/zmx
+chmod +x ~/.local/bin/zmx
+```
+
+## zmx 是什麼
+
+[zmx](https://github.com/neurosnap/zmx) 是輕量級的 terminal session 持久化工具。與 tmux 最大的理念差異在於：zmx 不做視窗管理（pane/window/tab），而是讓每個 session 是獨立的原生滾動終端。本專案用它來背景執行 Runner Agent，Dispatch Agent 透過 zmx 指令監控進度與讀取輸出。
+
+跟 tmux 的差異：
+
+| | tmux | zmx |
+|---|---|---|
+| 核心理念 | 終端多工器，管理 pane/window/tab | 原生滾動的 session 持久化 |
+| 視窗管理 | 內建分割、切換、佈局 | 不做，每個 session 獨立存在 |
+| 滾動 | tmux 自己的 scrollback buffer | 直接用終端模擬器的原生滾動 |
+| 輸出擷取 | `capture-pane` 等複雜操作 | `zmx history` 直接取得完整 scrollback |
+| 背景執行 | `send-keys` + detach | `zmx run -d` 一行搞定 |
+| 追蹤輸出 | 需要 attach 到 pane | `zmx tail` 即時追蹤，不需 attach |
+
+## 用法
+
+在任何支援 skills 的 Code Agent 中觸發 `cowork-dispatch`，會自動從腦力激盪開始跑完整流程：
+
+```
+cowork 幫我做一個使用者登入功能
+```
+
+可以指定各階段的 client 設定：
+
+```
+spec 用 codex-exec 審查，code 用 claude-zmx sonnet 4.6 medium
+```
+
+Runner 通常由 Dispatch 自動啟動，也可以手動觸發 `cowork-runner`。
+
+### 執行中查看進度
+
+Runner 在背景跑時，可以用 zmx 指令查看：
+
+| 指令 | 說明 |
+|------|------|
+| `zmx list` | 列出所有背景 session |
+| `zmx attach <session>` | 即時檢視 Runner 執行畫面（`Ctrl+\` 脫離） |
+| `zmx tail <session>` | 追蹤 session 輸出 |
+| `zmx history <session> \| tail -20` | 查看最近輸出 |
+
+## 流程
+
+```
+使用者需求
+    |
+    v
++---------------------------+
+|  spec（規格）              |
+|  brainstorm → 撰寫 → 審查  |   <-- Superpowers 腦力激盪 + 撰寫計劃工作流
+|  審查迴圈直到核准           |       審查委派給外部 CLI Agent
++---------------------------+
+    |
+    v
++---------------------------+
+|  plan（計劃）              |
+|  產生計劃 → 審查            |   <-- 外部 CLI Agent 撰寫，Dispatch Agent 審查
+|  審查迴圈直到核准           |       規格 + 計劃一起 git commit
++---------------------------+
+    |
+    v
++---------------------------+
+|  dispatch（派發）          |
+|  建立任務 → tasks.yaml     |   <-- 一個摘要任務指向計劃檔案
+|  啟動 Runner session       |       支援 zmx / CLI 兩種執行方式
++---------------------------+
+    |
+    v
++---------------------------+
+|  monitor（監控）           |
+|  存活檢查 + 偏離檢查       |   <-- 兩層監控，無硬性 timeout
+|  等待 results.yaml 寫入    |       STALL / DRIFT_CHECK 通知 AI 介入
++---------------------------+
+    |
+    v
++---------------------------+
+|  verify（驗收）            |
+|  讀取結果 → git diff       |   <-- 自動執行測試套件
+|  執行測試 → 診斷失敗        |       失敗時診斷並報告
++---------------------------+
+    |
+    v
+  回報使用者
+```
+
+## 架構
+
+```
+cowork-dispatch/          Dispatch Agent 技能（協調者）
+  SKILL.md                  流程定義、Client 設定、監控邏輯
+
+cowork-runner/            Runner Agent 技能（執行者）
+  SKILL.md                  任務讀取、實作、結果寫入
+  references/
+    yaml-schema.md          tasks.yaml / results.yaml 格式定義
+
+.cowork/                  執行時工作目錄（gitignore）
+  tasks.yaml                待處理任務佇列
+  results.yaml              執行結果
+  logs/                     CLI 執行 log
+```
+
+## 支援的 Client
+
+| Client     | 執行方式                          | 適用場景        |
+| ---------- | --------------------------------- | --------------- |
+| claude-zmx | zmx detached + claude TUI         | 長時任務        |
+| claude-cli | claude -p（同步）                  | Agent 直接呼叫  |
+| codex-zmx  | zmx detached + codex TUI          | 長時任務        |
+| codex-exec | codex exec（同步）                 | Agent 直接呼叫  |
+
+## 兩層監控
+
+取代硬性 timeout，以存活檢查與偏離檢查確保任務正常推進：
+
+| 階段       | 存活檢查（工具是否正常運行）       | 偏離檢查（是否在做對的事）     |
+| ---------- | ------------------------------ | ------------------------------ |
+| spec/plan  | 5 分鐘 log 檔無 mtime 變更    | 30 分鐘讀 log 判斷方向         |
+| runner     | 15 分鐘 zmx history 無新輸出  | 1 小時讀 zmx history 判斷方向  |
