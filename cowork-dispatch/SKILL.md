@@ -62,10 +62,9 @@ phases:
     client: codex-zmx
     model: gpt-5.5
     effort: medium
-monitor:                  # 僅影響 Claude Code dispatch（方式 A）
+monitor:                  # 監控設定
   enabled: true           # false = 不監控
   interval: 300           # 輪詢間隔（秒）
-  timeout: 3600000        # Monitor 逾時（毫秒）
 ```
 
 ### 內建預設
@@ -130,9 +129,30 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
    codex exec ... "review prompt" 2>>"$LOG" | tee -a "$LOG"
    ```
    log 命名格式：`spec-review-<ISO8601>.log`。多輪審查產生多個 log 檔。
-5. 小問題由 reviewer 直接修正；重大問題由 writer 修正後重新送審。
-6. 迴圈直到規格核准。不將審查工作寫入 `tasks.yaml`。
-7. **CLI 中斷防護：** 若 `codex exec` 審查因逾時或錯誤中斷，**不得自行編造審查結論**。查詢 session ID 後以 `codex exec resume` 恢復執行，取得實際審查結果。
+5. **CLI 執行監控**（有 Monitor 能力時）：以 `run_in_background: true` 執行 CLI 指令，同時以 Monitor 工具監控 log 檔（`persistent: false`）：
+   ```bash
+   LOG="<log_path>"
+   START=$SECONDS
+   LAST_MOD=$(stat -c %Y "$LOG" 2>/dev/null || echo 0)
+   while sleep 300; do
+     [ -f "$LOG" ] || { echo "heartbeat: log not yet created"; continue; }
+     CURRENT_MOD=$(stat -c %Y "$LOG")
+     if [ "$CURRENT_MOD" -eq "$LAST_MOD" ]; then
+       echo "STALL: log unchanged for 5+ min"
+       tail -20 "$LOG"; break
+     fi
+     LAST_MOD=$CURRENT_MOD
+     if [ $(( SECONDS - START )) -ge 1800 ]; then
+       echo "DRIFT_CHECK: $(( SECONDS - START ))s elapsed"
+       tail -20 "$LOG"
+       START=$SECONDS
+     fi
+   done
+   ```
+   收到 `STALL`：嘗試恢復或報告使用者。收到 `DRIFT_CHECK`：判斷 reviewer 是否死循環、prompt 劫持或偏離目標，確認偏離時終止並報告。無 Monitor 能力的 agent 維持同步執行。
+6. 小問題由 reviewer 直接修正；重大問題由 writer 修正後重新送審。
+7. 迴圈直到規格核准。不將審查工作寫入 `tasks.yaml`。
+8. **CLI 中斷防護：** 若 `codex exec` 審查因逾時或錯誤中斷，**不得自行編造審查結論**。查詢 session ID 後以 `codex exec resume` 恢復執行，取得實際審查結果。
 
 ### plan
 
@@ -144,13 +164,14 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
    codex exec ... "plan prompt" 2>>"$LOG" | tee -a "$LOG"
    ```
    log 命名格式：`plan-write-<ISO8601>.log`。審查迴圈中每次呼叫產生獨立 log。
-4. 有缺漏或偏離時，回饋 writer 修正後再審。
-5. **CLI 中斷防護：** 若 `codex exec` 撰寫或審查因逾時或錯誤中斷，**不得自行編造計劃內容或審查結論**。查詢 session ID 後以 `codex exec resume` 恢復執行。
-6. 規格與計劃皆核准後一起提交：
+4. **CLI 執行監控：** 同 spec 階段步驟 5，log 路徑替換為對應的 `plan-write-*.log` 或 `plan-review-*.log`。
+5. 有缺漏或偏離時，回饋 writer 修正後再審。
+6. **CLI 中斷防護：** 若 `codex exec` 撰寫或審查因逾時或錯誤中斷，**不得自行編造計劃內容或審查結論**。查詢 session ID 後以 `codex exec resume` 恢復執行。
+7. 規格與計劃皆核准後一起提交：
    ```bash
    git commit -m "docs: add <feature-name> spec and implementation plan"
    ```
-7. 不將計劃撰寫或審查工作寫入 `tasks.yaml`。
+8. 不將計劃撰寫或審查工作寫入 `tasks.yaml`。
 
 ### dispatch
 
@@ -184,11 +205,14 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
 
 5. **zmx 監控** — 依 dispatch agent 的能力與 `monitor` 設定選擇方式。`monitor.enabled: false` 或使用者說「不要監控」時跳過監控，直接告知使用者手動檢查。
 
-   監控腳本（兩種方式共用）：
+   監控腳本（兩種方式共用）— 含存活檢查（15 分鐘）與偏離檢查（1 小時）：
 
    ```bash
    SESSION="<session>"
    TID="<task_id>"
+   LAST_LINES=0
+   LAST_CHANGE=$SECONDS
+   LAST_DRIFT=$SECONDS
    while sleep ${INTERVAL:-300}; do
      zmx list 2>/dev/null | grep -q "$SESSION" || {
        echo "ALERT: session gone"; zmx history "$SESSION" | tail -20; break
@@ -196,6 +220,21 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
      head -3 .cowork/results.yaml 2>/dev/null | grep -q "$TID" && {
        echo "DONE: $TID"; zmx history "$SESSION" | tail -20; break
      }
+     CURRENT=$(zmx history "$SESSION" 2>/dev/null | wc -l)
+     if [ "$CURRENT" -gt "$LAST_LINES" ]; then
+       LAST_LINES=$CURRENT
+       LAST_CHANGE=$SECONDS
+     fi
+     if [ $(( SECONDS - LAST_CHANGE )) -ge 900 ]; then
+       echo "STALL: no new output for $(( SECONDS - LAST_CHANGE ))s"
+       zmx history "$SESSION" | tail -20
+       LAST_CHANGE=$SECONDS
+     fi
+     if [ $(( SECONDS - LAST_DRIFT )) -ge 3600 ]; then
+       echo "DRIFT_CHECK: ${SECONDS}s elapsed, verify direction"
+       zmx history "$SESSION" | tail -20
+       LAST_DRIFT=$SECONDS
+     fi
      echo "heartbeat: waiting (${SECONDS}s elapsed)"
    done
    ```
@@ -204,19 +243,14 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
 
    **方式 A：Claude Code dispatch（有 Monitor 工具）**
 
-   初始健康檢查 — Bash `run_in_background: true`：
-   ```bash
-   sleep 180 && zmx history <session> | tail -20
-   ```
-   啟動後立即進入完成監控，健康檢查結果到達時處理錯誤。
+   使用 **Monitor** 工具執行監控腳本（`persistent: false`）。非阻塞，每行 `echo` 成為 agent 通知。
 
-   使用 **Monitor** 工具執行監控腳本（`timeout_ms` 取自 `monitor.timeout`，預設 `3600000`；`persistent: false`）。非阻塞，每行 `echo` 成為 agent 通知。
-
-   逾時行為：`timeout_ms` 到期時 Monitor 終止腳本，但 zmx session 繼續運行。agent 須手動檢查 `zmx list` 和 `results.yaml`。
+   收到 `STALL` 通知時：檢查 `zmx list` 確認 session 狀態，視需要嘗試恢復。
+   收到 `DRIFT_CHECK` 通知時：閱讀輸出內容，判斷是否死循環、prompt 劫持、或偏離任務目標。確認偏離時終止 session 並報告使用者。
 
    **方式 B：Codex dispatch 或其他無 Monitor 的 agent**
 
-   直接以 bash 執行監控腳本，阻塞直到完成或 session 消失。
+   直接以 bash 執行監控腳本，阻塞直到完成、session 消失、或偵測到 STALL/DRIFT_CHECK。
 
 6. **zmx 錯誤處理：**
    - 503 錯誤：`zmx send <session> "GO"`
@@ -286,7 +320,7 @@ codex exec resume <session_uuid> "繼續執行未完成的任務"
   - stdout（fd1）→ terminal（AI 可見）+ log 檔
   - stderr（fd2）→ 僅 log 檔
 - 命名格式：`<phase>-<ISO8601>.log`，例如 `spec-review-20260623T100500Z.log`。
-- **僅在超時或異常時**才主動讀取 log 檔排查：`tail -20 .cowork/logs/<對應 log>`。
+- 存活檢查（STALL）與偏離檢查（DRIFT_CHECK）觸發時讀取 log 檔：`tail -20 .cowork/logs/<對應 log>`。
 - zmx client 不受影響，仍用 `zmx history` 查看輸出。
 
 ## 注意事項
