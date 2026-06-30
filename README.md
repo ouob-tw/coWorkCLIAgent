@@ -118,7 +118,7 @@ Runner 在背景跑時，可以用 zmx 指令查看：
 +---------------------------+
 |  monitor（監控）           |
 |  存活檢查 + 偏離檢查       |   <-- 兩層監控，無硬性 timeout
-|  等待 results.yaml 寫入    |       STALL / DRIFT_CHECK 通知 AI 介入
+|  等待 results.yaml 寫入    |       卡住（STALL）或偏離方向（DRIFT_CHECK）時通知 AI 介入
 +---------------------------+
     |
     v
@@ -153,10 +153,12 @@ cowork-runner/            Runner Agent 技能（執行者）
 
 | Client     | 執行方式                          | 適用場景        |
 | ---------- | --------------------------------- | --------------- |
-| claude-zmx | zmx detached + claude TUI         | 長時任務        |
+| claude-zmx | zmx 背景執行 + claude TUI     | 長時任務        |
 | claude-cli | claude -p（同步）                  | Agent 直接呼叫  |
-| codex-zmx  | zmx detached + codex TUI          | 長時任務        |
+| codex-zmx  | zmx 背景執行 + codex TUI      | 長時任務        |
 | codex-exec | codex exec（同步）                 | Agent 直接呼叫  |
+
+> **TUI（Terminal UI）**：在終端機中運作的互動式圖形介面，可以即時交互與顯示執行狀態。
 
 ## 兩層監控
 
