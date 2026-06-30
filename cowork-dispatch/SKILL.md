@@ -139,7 +139,7 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
    START=$SECONDS
    LAST_MOD=$(stat -c %Y "$LOG" 2>/dev/null || echo 0)
    while sleep 300; do
-     [ -f "$LOG" ] || { echo "heartbeat: log not yet created"; continue; }
+     [ -f "$LOG" ] || continue
      CURRENT_MOD=$(stat -c %Y "$LOG")
      if [ "$CURRENT_MOD" -eq "$LAST_MOD" ]; then
        echo "STALL: log unchanged for 5+ min"
@@ -164,7 +164,7 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
    LAST_MOD=$(stat -c %Y "$LOG" 2>/dev/null || echo 0)
    while sleep 300; do
      kill -0 "$CLI_PID" 2>/dev/null || { echo "CLI completed"; break; }
-     [ -f "$LOG" ] || { echo "heartbeat: log not yet created"; continue; }
+     [ -f "$LOG" ] || continue
      CURRENT_MOD=$(stat -c %Y "$LOG")
      if [ "$CURRENT_MOD" -eq "$LAST_MOD" ]; then
        echo "STALL: log unchanged for 5 min"
@@ -175,7 +175,6 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
        echo "DRIFT_CHECK: $(( SECONDS - START ))s elapsed"
        tail -20 "$LOG"; kill "$CLI_PID" 2>/dev/null; break
      fi
-     echo "heartbeat: $(( SECONDS - START ))s elapsed"
    done
    ```
    收到 `STALL`：嘗試恢復或報告使用者。收到 `DRIFT_CHECK`：確認無偏離後以 `codex exec resume <session_id>` 繼續；確認偏離時終止並報告。
@@ -266,7 +265,6 @@ model 與 effort 會依 client 類型映射到對應 CLI 旗標：
        zmx history "$SESSION" | tail -20
        LAST_DRIFT=$SECONDS
      fi
-     echo "heartbeat: waiting (${SECONDS}s elapsed)"
    done
    ```
 
